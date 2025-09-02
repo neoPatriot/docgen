@@ -16,6 +16,36 @@ def index():
     download_file = session.pop('download_file', None)
     return render_template('index.html', download_file=download_file)
 
+def replace_placeholders(document, placeholders_data):
+    """
+    Replaces placeholders in all parts of a document (body, tables, headers, footers).
+    """
+    all_paragraphs = list(document.paragraphs)
+    for table in document.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    all_paragraphs.append(paragraph)
+
+    for section in document.sections:
+        for header in section.header.paragraphs:
+            all_paragraphs.append(header)
+        for footer in section.footer.paragraphs:
+            all_paragraphs.append(footer)
+
+    for p in all_paragraphs:
+        for key, value in placeholders_data.items():
+            placeholder = f"{{{{{key}}}}}"
+            # A more robust replacement that handles placeholders split across runs
+            if placeholder in p.text:
+                inline = p.runs
+                # Replace strings and retain formatting
+                for i in range(len(inline)):
+                    if placeholder in inline[i].text:
+                        text = inline[i].text.replace(placeholder, str(value) if value is not None else "")
+                        inline[i].text = text
+
+
 def generate_documents(template_path, data_path, output_folder):
     """
     Generates DOCX files from a template and Excel data.
@@ -32,29 +62,7 @@ def generate_documents(template_path, data_path, output_folder):
             doc = Document(template_path)
             row_data = dict(zip(header, row))
 
-            for key, value in row_data.items():
-                placeholder = f"{{{{{key}}}}}"
-                str_value = str(value) if value is not None else ""
-
-                for para in doc.paragraphs:
-                    if placeholder in para.text:
-                        # Using runs to preserve formatting
-                        inline = para.runs
-                        for j in range(len(inline)):
-                            if placeholder in inline[j].text:
-                                text = inline[j].text.replace(placeholder, str_value)
-                                inline[j].text = text
-
-                for table in doc.tables:
-                    for t_row in table.rows:
-                        for cell in t_row.cells:
-                            for para in cell.paragraphs:
-                                if placeholder in para.text:
-                                    inline = para.runs
-                                    for j in range(len(inline)):
-                                        if placeholder in inline[j].text:
-                                            text = inline[j].text.replace(placeholder, str_value)
-                                            inline[j].text = text
+            replace_placeholders(doc, row_data)
 
             # Generate a unique filename for each document
             output_filename = f"document_{i-1}.docx"
@@ -64,7 +72,7 @@ def generate_documents(template_path, data_path, output_folder):
 
         return doc_count
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"An error occurred during document generation: {e}")
         return -1
 
 @app.route('/upload', methods=['POST'])

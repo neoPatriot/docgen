@@ -1,0 +1,10 @@
+# Flask and Python
+*.pyc
+__pycache__/
+venv/
+*.env
+
+# Application-specific
+app.log
+uploads/
+jules-scratch/

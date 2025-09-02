@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Генератор документов</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; }
+        .container { max-width: 500px; margin: auto; padding: 1em; border: 1px solid #ccc; border-radius: 5px; }
+        .form-group { margin-bottom: 1em; }
+        label { display: block; margin-bottom: .5em; }
+        input[type="file"] { width: 100%; }
+        input[type="submit"] { background-color: #007bff; color: white; padding: .5em 1em; border: none; border-radius: 3px; cursor: pointer; }
+        .flash-message { padding: 1em; margin-top: 1em; border-radius: 3px; }
+        .flash-success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .flash-error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Генератор документов</h1>
+        <p>Загрузите шаблон (.docx) и таблицу с данными (.xlsx), чтобы сгенерировать документы.</p>
+        <form action="/upload" method="post" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="template_file">1. Выберите файл шаблона (.docx):</label>
+                <input type="file" id="template_file" name="template_file" accept=".docx" required>
+            </div>
+            <div class="form-group">
+                <label for="data_file">2. Выберите файл с данными (.xlsx):</label>
+                <input type="file" id="data_file" name="data_file" accept=".xlsx" required>
+            </div>
+            <input type="submit" value="Сгенерировать">
+        </form>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% if download_file %}
+        <div class="download-section" style="margin-top: 2em; padding: 1em; background-color: #e9f7ef; border-radius: 5px; text-align: center;">
+            <p>Ваши документы готовы!</p>
+            <a href="{{ url_for('download_file', filename=download_file) }}" class="button" style="text-decoration: none; background-color: #28a745; color: white; padding: .7em 1.5em; border-radius: 3px;">Скачать ZIP-архив</a>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

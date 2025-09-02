@@ -2,7 +2,7 @@ import os
 from flask import Flask, render_template, request, send_from_directory, flash, redirect, url_for, session
 from werkzeug.utils import secure_filename
 import openpyxl
-from docx import Document
+from docxtpl import DocxTemplate
 import zipfile
 import uuid
 
@@ -16,53 +16,26 @@ def index():
     download_file = session.pop('download_file', None)
     return render_template('index.html', download_file=download_file)
 
-def replace_placeholders(document, placeholders_data):
-    """
-    Replaces placeholders in all parts of a document (body, tables, headers, footers).
-    """
-    all_paragraphs = list(document.paragraphs)
-    for table in document.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                for paragraph in cell.paragraphs:
-                    all_paragraphs.append(paragraph)
-
-    for section in document.sections:
-        for header in section.header.paragraphs:
-            all_paragraphs.append(header)
-        for footer in section.footer.paragraphs:
-            all_paragraphs.append(footer)
-
-    for p in all_paragraphs:
-        for key, value in placeholders_data.items():
-            placeholder = f"{{{{{key}}}}}"
-            # A more robust replacement that handles placeholders split across runs
-            if placeholder in p.text:
-                inline = p.runs
-                # Replace strings and retain formatting
-                for i in range(len(inline)):
-                    if placeholder in inline[i].text:
-                        text = inline[i].text.replace(placeholder, str(value) if value is not None else "")
-                        inline[i].text = text
-
-
 def generate_documents(template_path, data_path, output_folder):
     """
-    Generates DOCX files from a template and Excel data.
+    Generates DOCX files from a template and Excel data using docxtpl.
     Returns the number of documents generated.
     """
     try:
         workbook = openpyxl.load_workbook(data_path)
         sheet = workbook.active
 
-        header = [cell.value for cell in sheet[1]]
+        # Normalize headers: remove spaces and convert to string
+        header = [str(cell.value).replace(' ', '') if cell.value else '' for cell in sheet[1]]
 
         doc_count = 0
         for i, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
-            doc = Document(template_path)
-            row_data = dict(zip(header, row))
+            doc = DocxTemplate(template_path)
+            context = dict(zip(header, row))
 
-            replace_placeholders(doc, row_data)
+            # The real power of docxtpl: it handles the rendering.
+            # It uses a Jinja2 engine, which is very robust.
+            doc.render(context)
 
             # Generate a unique filename for each document
             output_filename = f"document_{i-1}.docx"
@@ -72,7 +45,10 @@ def generate_documents(template_path, data_path, output_folder):
 
         return doc_count
     except Exception as e:
+        # More specific error logging
+        import traceback
         print(f"An error occurred during document generation: {e}")
+        traceback.print_exc()
         return -1
 
 @app.route('/upload', methods=['POST'])

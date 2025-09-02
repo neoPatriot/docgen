@@ -5,6 +5,7 @@ import openpyxl
 from docxtpl import DocxTemplate
 import zipfile
 import uuid
+import datetime
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -32,6 +33,11 @@ def generate_documents(template_path, template_name, data_path, output_folder):
         for i, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
             doc = DocxTemplate(template_path)
             context = dict(zip(header, row))
+
+            # Format dates before rendering
+            for key, value in context.items():
+                if isinstance(value, datetime.datetime):
+                    context[key] = value.strftime('%d.%m.%Y')
 
             doc.render(context)
 

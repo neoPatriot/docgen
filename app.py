@@ -16,10 +16,10 @@ def index():
     download_file = session.pop('download_file', None)
     return render_template('index.html', download_file=download_file)
 
-def generate_documents(template_path, data_path, output_folder):
+def generate_documents(template_path, template_name, data_path, output_folder):
     """
     Generates DOCX files from a template and Excel data using docxtpl.
-    Returns the number of documents generated.
+    Returns the number of documents generated for this template.
     """
     try:
         workbook = openpyxl.load_workbook(data_path)
@@ -33,82 +33,95 @@ def generate_documents(template_path, data_path, output_folder):
             doc = DocxTemplate(template_path)
             context = dict(zip(header, row))
 
-            # The real power of docxtpl: it handles the rendering.
-            # It uses a Jinja2 engine, which is very robust.
             doc.render(context)
 
-            # Generate a unique filename for each document
-            output_filename = f"document_{i-1}.docx"
+            # Generate a unique filename for each document based on template name and row
+            template_base_name = os.path.splitext(template_name)[0]
+            output_filename = f"{template_base_name}_row_{i-1}.docx"
             output_path = os.path.join(output_folder, output_filename)
             doc.save(output_path)
             doc_count += 1
 
         return doc_count
     except Exception as e:
-        # More specific error logging
         import traceback
-        print(f"An error occurred during document generation: {e}")
+        print(f"An error occurred during document generation for template {template_name}: {e}")
         traceback.print_exc()
         return -1
 
 @app.route('/upload', methods=['POST'])
 def upload_files():
-    if 'template_file' not in request.files or 'data_file' not in request.files:
-        flash('Не удалось загрузить файлы.', 'error')
+    # Use getlist to handle multiple files for the 'template_files' input
+    template_files = request.files.getlist("template_files")
+    data_file = request.files.get('data_file')
+
+    if not template_files or not data_file or not template_files[0].filename:
+        flash('Необходимо выбрать хотя бы один файл шаблона и один файл с данными.', 'error')
         return redirect(url_for('index'))
 
-    template_file = request.files['template_file']
-    data_file = request.files['data_file']
-
-    if template_file.filename == '' or data_file.filename == '':
-        flash('Файлы не выбраны.', 'error')
+    # Save the single data file first
+    data_filename = secure_filename(data_file.filename)
+    if not data_filename.endswith('.xlsx'):
+        flash('Файл с данными должен быть в формате .xlsx.', 'error')
         return redirect(url_for('index'))
+    data_path = os.path.join(app.config['UPLOAD_FOLDER'], data_filename)
+    data_file.save(data_path)
 
-    if template_file and data_file and template_file.filename.endswith('.docx') and data_file.filename.endswith('.xlsx'):
-        template_filename = secure_filename(template_file.filename)
-        data_filename = secure_filename(data_file.filename)
+    # Prepare for generation
+    output_folder = os.path.join(app.config['UPLOAD_FOLDER'], 'generated_docs')
+    os.makedirs(output_folder, exist_ok=True)
 
-        template_path = os.path.join(app.config['UPLOAD_FOLDER'], template_filename)
-        data_path = os.path.join(app.config['UPLOAD_FOLDER'], data_filename)
+    total_docs_generated = 0
+    error_occurred = False
+    saved_template_paths = []
 
-        template_file.save(template_path)
-        data_file.save(data_path)
+    # Loop through each uploaded template file
+    for template_file in template_files:
+        if template_file and template_file.filename.endswith('.docx'):
+            template_filename = secure_filename(template_file.filename)
+            template_path = os.path.join(app.config['UPLOAD_FOLDER'], template_filename)
+            template_file.save(template_path)
+            saved_template_paths.append(template_path)
 
-        # Create a temporary directory for generated docs
-        output_folder = os.path.join(app.config['UPLOAD_FOLDER'], 'generated_docs')
-        os.makedirs(output_folder, exist_ok=True)
+            # Generate documents for the current template
+            num_docs = generate_documents(template_path, template_filename, data_path, output_folder)
 
-        # Generate documents
-        num_docs = generate_documents(template_path, data_path, output_folder)
-
-        if num_docs > 0:
-            # Create a zip file with a unique name
-            zip_filename = f"generated_documents_{uuid.uuid4().hex}.zip"
-            zip_path = os.path.join(app.config['UPLOAD_FOLDER'], zip_filename)
-            with zipfile.ZipFile(zip_path, 'w') as zipf:
-                for root, _, files in os.walk(output_folder):
-                    for file in files:
-                        zipf.write(os.path.join(root, file), file)
-
-            # Clean up temporary files
-            os.remove(template_path)
-            os.remove(data_path)
-            for file in os.listdir(output_folder):
-                os.remove(os.path.join(output_folder, file))
-            os.rmdir(output_folder)
-
-            flash(f'Успешно сгенерировано {num_docs} документов.', 'success')
-            session['download_file'] = zip_filename
-            return redirect(url_for('index'))
+            if num_docs > 0:
+                total_docs_generated += num_docs
+            else:
+                error_occurred = True
+                flash(f'Произошла ошибка при обработке шаблона {template_filename}.', 'error')
         else:
-            flash('Произошла ошибка при генерации документов.', 'error')
-            # Clean up uploaded files on error
-            os.remove(template_path)
-            os.remove(data_path)
-            return redirect(url_for('index'))
+            flash(f'Неверный формат файла шаблона: {template_file.filename}. Он должен быть .docx.', 'error')
+            error_occurred = True
 
+    # Cleanup saved template files and data file
+    for path in saved_template_paths:
+        os.remove(path)
+    os.remove(data_path)
+
+    if total_docs_generated > 0:
+        # Create a zip file with all generated documents
+        zip_filename = f"generated_documents_{uuid.uuid4().hex}.zip"
+        zip_path = os.path.join(app.config['UPLOAD_FOLDER'], zip_filename)
+        with zipfile.ZipFile(zip_path, 'w') as zipf:
+            for file in os.listdir(output_folder):
+                zipf.write(os.path.join(output_folder, file), file)
+
+        # Cleanup generated docx files and the folder
+        for file in os.listdir(output_folder):
+            os.remove(os.path.join(output_folder, file))
+        os.rmdir(output_folder)
+
+        flash(f'Успешно сгенерировано {total_docs_generated} документов.', 'success')
+        session['download_file'] = zip_filename
+        return redirect(url_for('index'))
     else:
-        flash('Неверный формат файлов. Пожалуйста, загрузите .docx и .xlsx файлы.', 'error')
+        # Cleanup the empty generated_docs folder if it exists
+        if os.path.exists(output_folder):
+            os.rmdir(output_folder)
+        if not error_occurred:
+             flash('Не удалось сгенерировать ни одного документа.', 'error')
         return redirect(url_for('index'))
 
 @app.route('/download/<filename>')

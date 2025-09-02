@@ -22,8 +22,8 @@
         <p>Загрузите шаблон (.docx) и таблицу с данными (.xlsx), чтобы сгенерировать документы.</p>
         <form action="/upload" method="post" enctype="multipart/form-data">
             <div class="form-group">
-                <label for="template_file">1. Выберите файл шаблона (.docx):</label>
-                <input type="file" id="template_file" name="template_file" accept=".docx" required>
+                <label for="template_file">1. Выберите файл(ы) шаблона (.docx):</label>
+                <input type="file" id="template_file" name="template_files" accept=".docx" required multiple>
             </div>
             <div class="form-group">
                 <label for="data_file">2. Выберите файл с данными (.xlsx):</label>
